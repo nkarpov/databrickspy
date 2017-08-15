@@ -11,6 +11,9 @@ except ImportError:
 CLUSTER_LIST_ENDPOINT = ('GET','api/2.0/clusters/list')
 CLUSTER_GET_ENDPOINT = ('GET', 'api/2.0/clusters/get')
 CLUSTER_CREATE_ENDPOINT = ('POST', 'api/2.0/clusters/create')
+JOBS_RUNS_SUBMIT = ('POST', 'api/2.0/jobs/runs/submit')
+JOBS_RUNS_GET = ('GET', 'api/2.0/jobs/runs/get')
+
 
 class DatabricksAPI:
 
@@ -42,11 +45,34 @@ class DatabricksAPI:
 			response = self.get_cluster({'cluster_id':cluster_id})
 			if response['state'] == 'RUNNING':
 				break
+			elif response['state'] == 'TERMINATING' or response['state'] == 'TERMINATED':
+				raise Exception("Cluster failed to start")
 
 		return cluster_id
 
 	def get_cluster(self, json):
 		response = self._do_api_call(CLUSTER_GET_ENDPOINT, json)
+		return response.json()
+
+	def run_submit(self, json):
+		# submit the job
+		run_id = self._do_api_call(JOBS_RUNS_SUBMIT, json).json()['run_id']
+
+		# poll job status until state is 'TERMINATED'
+		while True:
+			time.sleep(self._polling_period)
+			response = self.get_run({'run_id': run_id})
+			if response['state']['life_cycle_state'] == 'TERMINATED':
+				print response
+				break
+			elif response['state']['life_cycle_state'] == 'SKIPPED' or response['state']['life_cycle_state'] == 'INTERNAL_ERROR':
+				print result
+				raise Exception("Job failed to complete")
+
+		return run_id
+
+	def get_run(self, json):
+		response = self._do_api_call(JOBS_RUNS_GET, json)
 		return response.json()
 
 	def _do_api_call(self, endpoint_info, json):
